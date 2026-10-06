@@ -13,7 +13,8 @@
     "dev:gateway": "npm run dev -w api-gateway",
     "dev:avaliacoes": "npm run dev -w servico-avaliacoes",
     "dev:cadastros": "npm run dev -w servico-cadastros",
-    "build": "npm run build -w api-gateway && npm run build -w servico-avaliacoes && npm run build -w servico-cadastros"
+    "build": "npm run build -w api-gateway && npm run build -w servico-avaliacoes && npm run build -w servico-cadastros",
+    "start": "concurrently -n \"GATEWAY,AVALIACOES,CADASTROS\" -c \"cyan,green,magenta\" \"npm run start -w api-gateway\" \"npm run start -w servico-avaliacoes\" \"npm run start -w servico-cadastros\""
   },
   "devDependencies": {
     "concurrently": "^9.1.2",
