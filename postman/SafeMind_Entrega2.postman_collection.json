@@ -1,0 +1,211 @@
+{
+  "info": {
+    "name": "SafeMind Distributed - Entrega 2",
+    "description": "Coleção de testes para a demonstração da arquitetura distribuída com comunicação síncrona (Ex1 e Ex2) entre Microsserviços e Gateway.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000/api",
+      "type": "string"
+    },
+    {
+      "key": "empresaId",
+      "value": "emp-1",
+      "type": "string"
+    },
+    {
+      "key": "avaliacaoId",
+      "value": "aval-1",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "0. Status do Cluster Distribuído",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/status-distribuido",
+          "host": ["{{baseUrl}}"],
+          "path": ["status-distribuido"]
+        },
+        "description": "Comprova que o Gateway e os dois microsserviços internos (A e B) estão ativos e comunicáveis."
+      }
+    },
+    {
+      "name": "1. Cadastrar Nova Empresa (Serviço B via Gateway)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"razaoSocial\": \"Metalúrgica Progresso Ltda\",\n  \"nomeFantasia\": \"Progresso Metais\",\n  \"cnpj\": \"98.765.432/0001-10\",\n  \"setorPrincipal\": \"Metalurgia e Siderurgia\",\n  \"ativa\": true\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/empresas",
+          "host": ["{{baseUrl}}"],
+          "path": ["empresas"]
+        },
+        "description": "Cadastra uma empresa no Microsserviço B através do API Gateway."
+      }
+    },
+    {
+      "name": "2. Consultar Empresa por ID (Serviço B)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/empresas/{{empresaId}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["empresas", "{{empresaId}}"]
+        },
+        "description": "Consulta a empresa cadastrada (ou a pré-populada emp-1)."
+      }
+    },
+    {
+      "name": "3. Cadastrar Colaborador (Serviço B via Gateway)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"empresaId\": \"{{empresaId}}\",\n  \"nome\": \"Mariana Oliveira\",\n  \"email\": \"mariana.oliveira@metalurgica.com.br\",\n  \"setor\": \"Linha de Montagem\",\n  \"cargo\": \"Operadora Especializada\",\n  \"ativo\": true\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/colaboradores",
+          "host": ["{{baseUrl}}"],
+          "path": ["colaboradores"]
+        },
+        "description": "Cadastra um colaborador no Microsserviço B vinculado à empresa informada."
+      }
+    },
+    {
+      "name": "4. [PROVA SÍNCRONA Ex1 + Ex2] Criar Avaliação Psicossocial",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "var jsonData = pm.response.json();",
+              "if (jsonData.id) {",
+              "    pm.collectionVariables.set('avaliacaoId', jsonData.id);",
+              "}"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"empresaId\": \"{{empresaId}}\",\n  \"titulo\": \"Avaliação de Clima e Fatores Psicossociais 2026\",\n  \"setor\": \"Operações\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/avaliacoes",
+          "host": ["{{baseUrl}}"],
+          "path": ["avaliacoes"]
+        },
+        "description": "PROVA DE COMUNICAÇÃO SÍNCRONA EM CADEIA:\n1. Cliente envia POST para Gateway (Porta 3000) (Ex1).\n2. Gateway faz fetch síncrono para Microsserviço A (Porta 3001).\n3. Microsserviço A faz fetch síncrono para Microsserviço B (Porta 3002) para validar se a empresa emp-1 existe e está ativa (Ex2).\n4. Resposta retorna por toda a cadeia até o cliente com status 201 Created."
+      }
+    },
+    {
+      "name": "5. [PROVA SÍNCRONA Negativa] Tentativa com Empresa Inexistente",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"empresaId\": \"empresa-fantasma-999\",\n  \"titulo\": \"Avaliação que deve falhar\",\n  \"setor\": \"TI\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/avaliacoes",
+          "host": ["{{baseUrl}}"],
+          "path": ["avaliacoes"]
+        },
+        "description": "Comprova que o Microsserviço A consultou o Microsserviço B em tempo real e rejeitou a criação com erro 404 porque a empresa não existe."
+      }
+    },
+    {
+      "name": "6. Submeter Resposta de Questionário NR-1 (Colaborador 1 - Risco Baixo)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"sobrecargaTrabalho\": 1,\n  \"suporteLideranca\": 2,\n  \"clarezaPapel\": 1,\n  \"ambienteFisico\": 2\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/avaliacoes/{{avaliacaoId}}/respostas",
+          "host": ["{{baseUrl}}"],
+          "path": ["avaliacoes", "{{avaliacaoId}}", "respostas"]
+        },
+        "description": "Submete respostas para a avaliação recém-criada. O Microsserviço A calcula os escores e classifica o risco."
+      }
+    },
+    {
+      "name": "7. Submeter Resposta de Questionário NR-1 (Colaborador 2 - Risco Alto)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"sobrecargaTrabalho\": 5,\n  \"suporteLideranca\": 4,\n  \"clarezaPapel\": 4,\n  \"ambienteFisico\": 5\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/avaliacoes/{{avaliacaoId}}/respostas",
+          "host": ["{{baseUrl}}"],
+          "path": ["avaliacoes", "{{avaliacaoId}}", "respostas"]
+        },
+        "description": "Submete respostas com alta sobrecarga e risco, provocando o recálculo ponderado da avaliação."
+      }
+    },
+    {
+      "name": "8. Obter Relatório Consolidado de Risco Psicossocial",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/avaliacoes/{{avaliacaoId}}/relatorio",
+          "host": ["{{baseUrl}}"],
+          "path": ["avaliacoes", "{{avaliacaoId}}", "relatorio"]
+        },
+        "description": "Retorna o relatório completo com total de respondentes, score médio consolidado, distribuição de risco (Baixo/Médio/Alto/Crítico) e detalhes."
+      }
+    }
+  ]
+}
