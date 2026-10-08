@@ -1,5 +1,4 @@
-# SafeMind Distributed — Sistema Distribuído de Avaliação Psicossocial (Entrega 2)
-
+# SafeMind Distributed — Sistema Distribuído de Avaliação Psicossocial
 **Disciplina:** Desenvolvimento de Sistemas Distribuídos  
 
 ---
