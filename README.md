@@ -7,7 +7,7 @@
 
 O projeto SafeMind Distributed é uma solução distribuída em **Node.js + TypeScript** desenhada para gestão e avaliação de riscos psicossociais e conformidade com as diretrizes da **NR-1 (PGR)**.
 
-Para atender plenamente aos requisitos da Entrega 2, o sistema opera com **3 serviços desacoplados** rodando em portas distintas na mesma rede, orquestrando fluxos síncronos de dados via protocolo HTTP:
+O sistema opera com **3 serviços desacoplados** rodando em portas distintas na mesma rede, orquestrando fluxos síncronos de dados via protocolo HTTP:
 
 ```mermaid
 flowchart TD
@@ -20,8 +20,8 @@ flowchart TD
     end
 
     Client -->|1. POST /api/avaliacoes| Gateway
-    Gateway -->|2. HTTP Síncrono Ex1: POST /avaliacoes| ServicoA
-    ServicoA -->|3. HTTP Síncrono Ex2: GET /empresas/:id| ServicoB
+    Gateway -->|2. HTTP Síncrono: POST /avaliacoes| ServicoA
+    ServicoA -->|3. HTTP Síncrono: GET /empresas/:id| ServicoB
     ServicoB -->|4. Retorno 200 OK Dados da Empresa| ServicoA
     ServicoA -->|5. Retorno 201 Created com Avaliação Criada| Gateway
     Gateway -->|6. Retorno 201 Created| Client
