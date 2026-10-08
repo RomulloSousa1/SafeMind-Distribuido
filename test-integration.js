@@ -26,7 +26,11 @@ async function runIntegrationTests() {
     })
   });
   const empresaCriada = await resEmpresa.json();
-  console.log('Empresa Criada (Status ' + resEmpresa.status + '):', empresaCriada);
+  if (resEmpresa.status === 201) {
+    console.log('Empresa Criada no SQLite (Status 201):', empresaCriada);
+  } else {
+    console.log('Empresa já persistida no SQLite (Status ' + resEmpresa.status + '):', empresaCriada);
+  }
 
   // 3. Cadastrar Colaborador (Gateway -> Serviço B)
   console.log('\n3️⃣ Testando Cadastro de Colaborador (Gateway -> Microsserviço B)...');
@@ -43,7 +47,11 @@ async function runIntegrationTests() {
     })
   });
   const colabCriado = await resColab.json();
-  console.log('Colaborador Criado (Status ' + resColab.status + '):', colabCriado);
+  if (resColab.status === 201) {
+    console.log('Colaborador Criado no SQLite (Status 201):', colabCriado);
+  } else {
+    console.log('Colaborador já persistido no SQLite (Status ' + resColab.status + '):', colabCriado);
+  }
 
   // 4. Prova Síncrona Ex1 + Ex2: Criar Avaliação Psicossocial
   console.log('\n4️⃣ [PROVA SÍNCRONA Ex1 + Ex2] Criando Avaliação Psicossocial...');

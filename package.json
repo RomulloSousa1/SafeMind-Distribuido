@@ -17,9 +17,13 @@
     "start": "concurrently -n \"GATEWAY,AVALIACOES,CADASTROS\" -c \"cyan,green,magenta\" \"npm run start -w api-gateway\" \"npm run start -w servico-avaliacoes\" \"npm run start -w servico-cadastros\""
   },
   "devDependencies": {
+    "@types/node": "^22.13.10",
     "concurrently": "^9.1.2",
     "tsx": "^4.19.3",
-    "typescript": "^5.8.2",
-    "@types/node": "^22.13.10"
+    "typescript": "^5.8.2"
+  },
+  "dependencies": {
+    "@types/better-sqlite3": "^9.6.0",
+    "better-sqlite3": "^13.0.3"
   }
 }

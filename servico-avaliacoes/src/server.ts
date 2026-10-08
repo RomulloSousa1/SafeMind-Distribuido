@@ -5,6 +5,7 @@ import { AvaliacaoRepository } from './repositories/AvaliacaoRepository.js';
 import { RespostaQuestionarioRepository } from './repositories/RespostaQuestionarioRepository.js';
 import { AvaliacaoService } from './services/AvaliacaoService.js';
 import { AvaliacaoController } from './controllers/AvaliacaoController.js';
+import { initAvaliacoesDatabase } from './database.js';
 
 dotenv.config();
 
@@ -13,6 +14,9 @@ const PORT = process.env.AVALIACOES_PORT || 3001;
 
 app.use(cors());
 app.use(express.json());
+
+// Inicializa banco de dados SQLite e migrações
+initAvaliacoesDatabase();
 
 // Middleware de log de requisições de rede
 app.use((req, res, next) => {

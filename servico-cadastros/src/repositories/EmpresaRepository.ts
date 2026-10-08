@@ -1,4 +1,6 @@
+import type Database from 'better-sqlite3';
 import { Empresa } from '../models/Empresa.js';
+import { db } from '../database.js';
 
 export interface IEmpresaRepository {
   criar(empresa: Empresa): Promise<Empresa>;
@@ -9,49 +11,67 @@ export interface IEmpresaRepository {
 }
 
 export class EmpresaRepository implements IEmpresaRepository {
-  private empresas: Map<string, Empresa> = new Map();
+  private readonly dbInstance: Database.Database;
 
-  constructor() {
-    // Seed inicial para facilitar demonstrações e testes imediatos
-    const empresaInicial: Empresa = {
-      id: 'emp-1',
-      razaoSocial: 'SafeMind Indústria & Tecnologia S.A.',
-      nomeFantasia: 'SafeMind Tech',
-      cnpj: '12.345.678/0001-90',
-      setorPrincipal: 'Operações e Manufatura',
-      ativa: true,
-      criadaEm: new Date(),
-      atualizadaEm: new Date()
+  constructor(databaseInstance?: Database.Database) {
+    this.dbInstance = databaseInstance || db;
+  }
+
+  private mapear(row: any): Empresa {
+    return {
+      id: row.id,
+      razaoSocial: row.razaoSocial,
+      nomeFantasia: row.nomeFantasia || undefined,
+      cnpj: row.cnpj,
+      setorPrincipal: row.setorPrincipal,
+      ativa: Boolean(row.ativa),
+      criadaEm: new Date(row.criadaEm),
+      atualizadaEm: new Date(row.atualizadaEm)
     };
-    this.empresas.set(empresaInicial.id, empresaInicial);
   }
 
   async criar(empresa: Empresa): Promise<Empresa> {
-    this.empresas.set(empresa.id, { ...empresa });
+    const stmt = this.dbInstance.prepare(`
+      INSERT INTO empresas (id, razaoSocial, nomeFantasia, cnpj, setorPrincipal, ativa, criadaEm, atualizadaEm)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    stmt.run(
+      empresa.id,
+      empresa.razaoSocial,
+      empresa.nomeFantasia || null,
+      empresa.cnpj,
+      empresa.setorPrincipal,
+      empresa.ativa ? 1 : 0,
+      empresa.criadaEm.toISOString(),
+      empresa.atualizadaEm.toISOString()
+    );
+
     return { ...empresa };
   }
 
   async buscarPorId(id: string): Promise<Empresa | null> {
-    const empresa = this.empresas.get(id);
-    return empresa ? { ...empresa } : null;
+    const stmt = this.dbInstance.prepare('SELECT * FROM empresas WHERE id = ?');
+    const row = stmt.get(id);
+    return row ? this.mapear(row) : null;
   }
 
   async buscarPorCnpj(cnpj: string): Promise<Empresa | null> {
     const normalizado = cnpj.replace(/\D/g, '');
-    for (const emp of this.empresas.values()) {
-      if (emp.cnpj.replace(/\D/g, '') === normalizado) {
-        return { ...emp };
-      }
-    }
-    return null;
+    const stmt = this.dbInstance.prepare('SELECT * FROM empresas');
+    const rows = stmt.all() as any[];
+    const encontrada = rows.find(r => r.cnpj.replace(/\D/g, '') === normalizado);
+    return encontrada ? this.mapear(encontrada) : null;
   }
 
   async listarTodas(): Promise<Empresa[]> {
-    return Array.from(this.empresas.values()).map(e => ({ ...e }));
+    const stmt = this.dbInstance.prepare('SELECT * FROM empresas ORDER BY criadaEm ASC');
+    const rows = stmt.all() as any[];
+    return rows.map(r => this.mapear(r));
   }
 
   async atualizar(id: string, dados: Partial<Empresa>): Promise<Empresa | null> {
-    const existente = this.empresas.get(id);
+    const existente = await this.buscarPorId(id);
     if (!existente) return null;
 
     const atualizada: Empresa = {
@@ -59,7 +79,28 @@ export class EmpresaRepository implements IEmpresaRepository {
       ...dados,
       atualizadaEm: new Date()
     };
-    this.empresas.set(id, atualizada);
+
+    const stmt = this.dbInstance.prepare(`
+      UPDATE empresas SET
+        razaoSocial = ?,
+        nomeFantasia = ?,
+        cnpj = ?,
+        setorPrincipal = ?,
+        ativa = ?,
+        atualizadaEm = ?
+      WHERE id = ?
+    `);
+
+    stmt.run(
+      atualizada.razaoSocial,
+      atualizada.nomeFantasia || null,
+      atualizada.cnpj,
+      atualizada.setorPrincipal,
+      atualizada.ativa ? 1 : 0,
+      atualizada.atualizadaEm.toISOString(),
+      id
+    );
+
     return { ...atualizada };
   }
 }

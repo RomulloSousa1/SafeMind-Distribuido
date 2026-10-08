@@ -7,6 +7,7 @@ import { EmpresaService } from './services/EmpresaService.js';
 import { ColaboradorService } from './services/ColaboradorService.js';
 import { EmpresaController } from './controllers/EmpresaController.js';
 import { ColaboradorController } from './controllers/ColaboradorController.js';
+import { initCadastrosDatabase } from './database.js';
 
 dotenv.config();
 
@@ -15,6 +16,9 @@ const PORT = process.env.CADASTROS_PORT || 3002;
 
 app.use(cors());
 app.use(express.json());
+
+// Inicializa banco de dados SQLite e migrações/seeds
+initCadastrosDatabase();
 
 // Middleware de log de requisições de rede
 app.use((req, res, next) => {

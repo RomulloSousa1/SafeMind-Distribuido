@@ -1,4 +1,6 @@
+import type Database from 'better-sqlite3';
 import { Colaborador } from '../models/Colaborador.js';
+import { db } from '../database.js';
 
 export interface IColaboradorRepository {
   criar(colaborador: Colaborador): Promise<Colaborador>;
@@ -8,46 +10,62 @@ export interface IColaboradorRepository {
 }
 
 export class ColaboradorRepository implements IColaboradorRepository {
-  private colaboradores: Map<string, Colaborador> = new Map();
+  private readonly dbInstance: Database.Database;
 
-  constructor() {
-    const colaboradorInicial: Colaborador = {
-      id: 'colab-1',
-      empresaId: 'emp-1',
-      nome: 'Carlos Silva',
-      email: 'carlos.silva@safemind.com.br',
-      setor: 'Operações',
-      cargo: 'Técnico de Produção',
-      ativo: true,
-      criadoEm: new Date(),
-      atualizadoEm: new Date()
+  constructor(databaseInstance?: Database.Database) {
+    this.dbInstance = databaseInstance || db;
+  }
+
+  private mapear(row: any): Colaborador {
+    return {
+      id: row.id,
+      empresaId: row.empresaId,
+      nome: row.nome,
+      email: row.email,
+      setor: row.setor,
+      cargo: row.cargo,
+      ativo: Boolean(row.ativo),
+      criadoEm: new Date(row.criadoEm),
+      atualizadoEm: new Date(row.atualizadoEm)
     };
-    this.colaboradores.set(colaboradorInicial.id, colaboradorInicial);
   }
 
   async criar(colaborador: Colaborador): Promise<Colaborador> {
-    this.colaboradores.set(colaborador.id, { ...colaborador });
+    const stmt = this.dbInstance.prepare(`
+      INSERT INTO colaboradores (id, empresaId, nome, email, setor, cargo, ativo, criadoEm, atualizadoEm)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    stmt.run(
+      colaborador.id,
+      colaborador.empresaId,
+      colaborador.nome,
+      colaborador.email,
+      colaborador.setor,
+      colaborador.cargo,
+      colaborador.ativo ? 1 : 0,
+      colaborador.criadoEm.toISOString(),
+      colaborador.atualizadoEm.toISOString()
+    );
+
     return { ...colaborador };
   }
 
   async buscarPorId(id: string): Promise<Colaborador | null> {
-    const colab = this.colaboradores.get(id);
-    return colab ? { ...colab } : null;
+    const stmt = this.dbInstance.prepare('SELECT * FROM colaboradores WHERE id = ?');
+    const row = stmt.get(id);
+    return row ? this.mapear(row) : null;
   }
 
   async listarPorEmpresa(empresaId: string): Promise<Colaborador[]> {
-    return Array.from(this.colaboradores.values())
-      .filter(c => c.empresaId === empresaId)
-      .map(c => ({ ...c }));
+    const stmt = this.dbInstance.prepare('SELECT * FROM colaboradores WHERE empresaId = ? ORDER BY criadoEm ASC');
+    const rows = stmt.all(empresaId) as any[];
+    return rows.map(r => this.mapear(r));
   }
 
   async buscarPorEmail(email: string): Promise<Colaborador | null> {
-    const emailNorm = email.toLowerCase().trim();
-    for (const c of this.colaboradores.values()) {
-      if (c.email.toLowerCase().trim() === emailNorm) {
-        return { ...c };
-      }
-    }
-    return null;
+    const stmt = this.dbInstance.prepare('SELECT * FROM colaboradores WHERE LOWER(email) = LOWER(?)');
+    const row = stmt.get(email.trim());
+    return row ? this.mapear(row) : null;
   }
 }
