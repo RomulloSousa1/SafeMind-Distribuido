@@ -7,6 +7,7 @@ export interface IRespostaQuestionarioRepository {
   criar(resposta: RespostaQuestionario): Promise<RespostaQuestionario>;
   listarPorAvaliacao(avaliacaoId: string): Promise<RespostaQuestionario[]>;
   contarPorAvaliacao(avaliacaoId: string): Promise<number>;
+  obterEstatisticas(avaliacaoId: string): Promise<{ total: number; scoreMedio: number }>;
 }
 
 export class RespostaQuestionarioRepository implements IRespostaQuestionarioRepository {
@@ -67,5 +68,18 @@ export class RespostaQuestionarioRepository implements IRespostaQuestionarioRepo
     const stmt = this.dbInstance.prepare('SELECT COUNT(*) as total FROM respostas_questionario WHERE avaliacaoId = ?');
     const row = stmt.get(avaliacaoId) as { total: number } | undefined;
     return row ? Number(row.total) : 0;
+  }
+
+  async obterEstatisticas(avaliacaoId: string): Promise<{ total: number; scoreMedio: number }> {
+    const stmt = this.dbInstance.prepare(`
+      SELECT COUNT(*) as total, COALESCE(AVG(scoreIndividual), 0) as scoreMedio 
+      FROM respostas_questionario 
+      WHERE avaliacaoId = ?
+    `);
+    const row = stmt.get(avaliacaoId) as { total: number; scoreMedio: number } | undefined;
+    return {
+      total: row ? Number(row.total) : 0,
+      scoreMedio: row ? Number(Number(row.scoreMedio).toFixed(2)) : 0
+    };
   }
 }

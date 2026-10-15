@@ -53,4 +53,10 @@ export function initAvaliacoesDatabase(): void {
       FOREIGN KEY (avaliacaoId) REFERENCES avaliacoes(id) ON DELETE CASCADE
     );
   `);
+
+  // Índices para otimização de consultas por chave estrangeira
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_avaliacoes_empresaId ON avaliacoes(empresaId);
+    CREATE INDEX IF NOT EXISTS idx_respostas_avaliacaoId ON respostas_questionario(avaliacaoId);
+  `);
 }

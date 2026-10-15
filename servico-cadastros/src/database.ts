@@ -50,6 +50,14 @@ export function initCadastrosDatabase(): void {
     );
   `);
 
+  // Índices para otimização de consultas frequentes
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_empresas_cnpj ON empresas(cnpj);
+    CREATE INDEX IF NOT EXISTS idx_colaboradores_empresaId ON colaboradores(empresaId);
+    CREATE INDEX IF NOT EXISTS idx_colaboradores_email ON colaboradores(email);
+    CREATE INDEX IF NOT EXISTS idx_colaboradores_email_lower ON colaboradores(LOWER(email));
+  `);
+
   // Seed inicial de Empresa para testes imediatos
   const existeEmpresa = db.prepare('SELECT id FROM empresas WHERE id = ?').get('emp-1');
   if (!existeEmpresa) {

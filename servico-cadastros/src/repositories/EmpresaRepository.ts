@@ -58,10 +58,14 @@ export class EmpresaRepository implements IEmpresaRepository {
 
   async buscarPorCnpj(cnpj: string): Promise<Empresa | null> {
     const normalizado = cnpj.replace(/\D/g, '');
-    const stmt = this.dbInstance.prepare('SELECT * FROM empresas');
-    const rows = stmt.all() as any[];
-    const encontrada = rows.find(r => r.cnpj.replace(/\D/g, '') === normalizado);
-    return encontrada ? this.mapear(encontrada) : null;
+    const stmt = this.dbInstance.prepare(`
+      SELECT * FROM empresas 
+      WHERE cnpj = ? 
+         OR REPLACE(REPLACE(REPLACE(REPLACE(cnpj, '.', ''), '-', ''), '/', ''), ' ', '') = ?
+      LIMIT 1
+    `);
+    const row = stmt.get(cnpj, normalizado);
+    return row ? this.mapear(row) : null;
   }
 
   async listarTodas(): Promise<Empresa[]> {

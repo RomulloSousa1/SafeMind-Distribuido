@@ -36,7 +36,7 @@ app.use('/api', gatewayRoutes);
 
 app.listen(PORT, () => {
   console.log(`=======================================================`);
-  console.log(`🌐 [API Gateway Principal] rodando na porta ${PORT}`);
+  console.log(` [API Gateway Principal] rodando na porta ${PORT}`);
   console.log(`   Endereço: http://localhost:${PORT}`);
   console.log(`   Status do Cluster: http://localhost:${PORT}/api/status-distribuido`);
   console.log(`=======================================================`);

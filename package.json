@@ -3,27 +3,34 @@
   "version": "1.0.0",
   "description": "SafeMind Distributed - Sistema Distribuído de Avaliação Psicossocial e Gestão Ocupacional (Entrega 2)",
   "private": true,
+  "type": "module",
   "workspaces": [
     "api-gateway",
     "servico-avaliacoes",
-    "servico-cadastros"
+    "servico-cadastros",
+    "servico-autenticacao"
   ],
   "scripts": {
-    "dev": "concurrently -n \"GATEWAY,AVALIACOES,CADASTROS\" -c \"cyan,green,magenta\" \"npm run dev -w api-gateway\" \"npm run dev -w servico-avaliacoes\" \"npm run dev -w servico-cadastros\"",
+    "dev": "concurrently -n \"GATEWAY,AVALIACOES,CADASTROS,AUTH\" -c \"cyan,green,magenta,yellow\" \"npm run dev -w api-gateway\" \"npm run dev -w servico-avaliacoes\" \"npm run dev -w servico-cadastros\" \"npm run dev -w servico-autenticacao\"",
     "dev:gateway": "npm run dev -w api-gateway",
     "dev:avaliacoes": "npm run dev -w servico-avaliacoes",
     "dev:cadastros": "npm run dev -w servico-cadastros",
-    "build": "npm run build -w api-gateway && npm run build -w servico-avaliacoes && npm run build -w servico-cadastros",
-    "start": "concurrently -n \"GATEWAY,AVALIACOES,CADASTROS\" -c \"cyan,green,magenta\" \"npm run start -w api-gateway\" \"npm run start -w servico-avaliacoes\" \"npm run start -w servico-cadastros\""
+    "dev:auth": "npm run dev -w servico-autenticacao",
+    "build": "npm run build -w api-gateway && npm run build -w servico-avaliacoes && npm run build -w servico-cadastros && npm run build -w servico-autenticacao",
+    "start": "concurrently -n \"GATEWAY,AVALIACOES,CADASTROS,AUTH\" -c \"cyan,green,magenta,yellow\" \"npm run start -w api-gateway\" \"npm run start -w servico-avaliacoes\" \"npm run start -w servico-cadastros\" \"npm run start -w servico-autenticacao\"",
+    "check-lines": "node scripts/check-line-limits.js",
+    "test:integration": "node test-integration.js"
   },
   "devDependencies": {
+    "@types/amqplib": "^0.10.8",
+    "@types/better-sqlite3": "^9.6.0",
     "@types/node": "^22.13.10",
     "concurrently": "^9.1.2",
     "tsx": "^4.19.3",
     "typescript": "^5.8.2"
   },
   "dependencies": {
-    "@types/better-sqlite3": "^9.6.0",
+    "amqplib": "^0.10.9",
     "better-sqlite3": "^13.0.3"
   }
 }

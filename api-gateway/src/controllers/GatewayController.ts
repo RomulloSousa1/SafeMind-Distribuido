@@ -3,10 +3,12 @@ import { Request, Response } from 'express';
 export class GatewayController {
   private readonly servicoAvaliacoesUrl: string;
   private readonly servicoCadastrosUrl: string;
+  private readonly servicoAutenticacaoUrl: string;
 
   constructor() {
     this.servicoAvaliacoesUrl = process.env.SERVICO_AVALIACOES_URL || 'http://localhost:3001';
     this.servicoCadastrosUrl = process.env.SERVICO_CADASTROS_URL || 'http://localhost:3002';
+    this.servicoAutenticacaoUrl = process.env.SERVICO_AUTENTICACAO_URL || 'http://localhost:3003';
   }
 
   // --- Verificação de Saúde do Cluster Distribuído ---
@@ -24,15 +26,16 @@ export class GatewayController {
       }
     };
 
-    const [statusA, statusB] = await Promise.all([
+    const [statusA, statusB, statusC] = await Promise.all([
       checarServico('Microsserviço A (Avaliações)', this.servicoAvaliacoesUrl),
-      checarServico('Microsserviço B (Cadastros)', this.servicoCadastrosUrl)
+      checarServico('Microsserviço B (Cadastros)', this.servicoCadastrosUrl),
+      checarServico('Microsserviço C (Autenticação)', this.servicoAutenticacaoUrl)
     ]);
 
     res.status(200).json({
       gateway: { nome: 'API Gateway Principal', status: 'ONLINE', porta: 3000 },
-      servicosInternos: [statusA, statusB],
-      topologia: 'Síncrona (Postman -> Gateway:3000 -> ServicoA:3001 -> ServicoB:3002)',
+      servicosInternos: [statusA, statusB, statusC],
+      topologia: 'Síncrona (Postman -> Gateway:3000 -> Servicos Internos: 3001, 3002, 3003)',
       timestamp: new Date()
     });
   };
@@ -40,7 +43,7 @@ export class GatewayController {
   // --- Rotas de Avaliações (Microsserviço A) ---
   criarAvaliacao = async (req: Request, res: Response): Promise<void> => {
     const destino = `${this.servicoAvaliacoesUrl}/avaliacoes`;
-    console.log(`[GATEWAY] 🔄 Requisição recebida do cliente. Disparando chamada HTTP Síncrona (Ex1) -> ${destino}`);
+    console.log(`[GATEWAY] [SYNC] Requisição recebida do cliente. Disparando chamada HTTP Síncrona (Ex1) -> ${destino}`);
     await this.repassarRequisicao(req, res, destino, 'POST');
   };
 
@@ -57,7 +60,7 @@ export class GatewayController {
 
   submeterResposta = async (req: Request, res: Response): Promise<void> => {
     const destino = `${this.servicoAvaliacoesUrl}/avaliacoes/${req.params.id}/respostas`;
-    console.log(`[GATEWAY] 🔄 Encaminhando resposta de questionário psicossocial -> ${destino}`);
+    console.log(`[GATEWAY] [SYNC] Encaminhando resposta de questionário psicossocial -> ${destino}`);
     await this.repassarRequisicao(req, res, destino, 'POST');
   };
 
@@ -69,7 +72,7 @@ export class GatewayController {
   // --- Rotas de Cadastros (Microsserviço B) ---
   criarEmpresa = async (req: Request, res: Response): Promise<void> => {
     const destino = `${this.servicoCadastrosUrl}/empresas`;
-    console.log(`[GATEWAY] 🔄 Cadastrando empresa no Microsserviço B -> ${destino}`);
+    console.log(`[GATEWAY] [SYNC] Cadastrando empresa no Microsserviço B -> ${destino}`);
     await this.repassarRequisicao(req, res, destino, 'POST');
   };
 
@@ -85,7 +88,7 @@ export class GatewayController {
 
   criarColaborador = async (req: Request, res: Response): Promise<void> => {
     const destino = `${this.servicoCadastrosUrl}/colaboradores`;
-    console.log(`[GATEWAY] 🔄 Cadastrando colaborador no Microsserviço B -> ${destino}`);
+    console.log(`[GATEWAY] [SYNC] Cadastrando colaborador no Microsserviço B -> ${destino}`);
     await this.repassarRequisicao(req, res, destino, 'POST');
   };
 
@@ -95,15 +98,45 @@ export class GatewayController {
     await this.repassarRequisicao(req, res, destino, 'GET');
   };
 
+  // --- Rotas de Autenticação (Microsserviço C) ---
+  registrarUsuario = async (req: Request, res: Response): Promise<void> => {
+    const destino = `${this.servicoAutenticacaoUrl}/auth/registrar`;
+    console.log(`[GATEWAY] [SYNC] Registrando novo usuário no Microsserviço C -> ${destino}`);
+    await this.repassarRequisicao(req, res, destino, 'POST');
+  };
+
+  login = async (req: Request, res: Response): Promise<void> => {
+    const destino = `${this.servicoAutenticacaoUrl}/auth/login`;
+    console.log(`[GATEWAY] [SYNC] Autenticando usuário (CPF + Senha) no Microsserviço C -> ${destino}`);
+    await this.repassarRequisicao(req, res, destino, 'POST');
+  };
+
+  validarToken = async (req: Request, res: Response): Promise<void> => {
+    const destino = `${this.servicoAutenticacaoUrl}/auth/validar`;
+    await this.repassarRequisicao(req, res, destino, req.method);
+  };
+
+  buscarUsuarioPorId = async (req: Request, res: Response): Promise<void> => {
+    const destino = `${this.servicoAutenticacaoUrl}/auth/usuarios/${req.params.id}`;
+    await this.repassarRequisicao(req, res, destino, 'GET');
+  };
+
   // Helper de despacho de rede
   private async repassarRequisicao(req: Request, res: Response, url: string, metodo: string): Promise<void> {
     try {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'X-Forwarded-By': 'SafeMind-API-Gateway'
+      };
+
+      if (req.headers.authorization) {
+        headers['Authorization'] = String(req.headers.authorization);
+      }
+
       const opcoes: RequestInit = {
         method: metodo,
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Forwarded-By': 'SafeMind-API-Gateway'
-        }
+        headers,
+        signal: AbortSignal.timeout(10000)
       };
 
       if (['POST', 'PUT', 'PATCH'].includes(metodo)) {
@@ -115,7 +148,14 @@ export class GatewayController {
 
       res.status(resposta.status).json(corpo);
     } catch (err: any) {
-      console.error(`[GATEWAY] ❌ Erro ao comunicar com serviço interno (${url}):`, err.message);
+      console.error(`[GATEWAY] [ERRO] Erro ao comunicar com serviço interno (${url}):`, err.message);
+      if (err.name === 'TimeoutError') {
+        res.status(504).json({
+          erro: 'Gateway Timeout',
+          detalhe: `Tempo limite de requisição excedido ao comunicar com ${url}.`
+        });
+        return;
+      }
       if (err.cause?.code === 'ECONNREFUSED') {
         res.status(503).json({
           erro: 'Serviço interno indisponível',

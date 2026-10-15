@@ -23,4 +23,12 @@ router.get('/empresas/:id', controller.buscarEmpresaPorId);
 router.post('/colaboradores', controller.criarColaborador);
 router.get('/colaboradores', controller.listarColaboradores);
 
+// Autenticação (Microsserviço C)
+router.post('/auth/registrar', controller.registrarUsuario);
+router.post('/auth/login', controller.login);
+router.get('/auth/validar', controller.validarToken);
+router.post('/auth/validar', controller.validarToken);
+router.get('/auth/usuarios/:id', controller.buscarUsuarioPorId);
+
 export default router;
+
