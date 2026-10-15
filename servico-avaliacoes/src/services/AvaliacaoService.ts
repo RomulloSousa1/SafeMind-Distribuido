@@ -5,13 +5,23 @@ import { Avaliacao, NivelRisco } from '../models/Avaliacao.js';
 import { RespostaQuestionario } from '../models/RespostaQuestionario.js';
 import { CriarAvaliacaoRequestDTO, AvaliacaoResponseDTO } from '../dtos/AvaliacaoDTO.js';
 import { SubmeterRespostaRequestDTO, RespostaResponseDTO, RelatorioAvaliacaoDTO } from '../dtos/RespostaDTO.js';
+import { RespostaSubmetidaEventDTO } from '../dtos/EventoDTO.js';
 
 export class AvaliacaoService {
+  private publicarEventoFn?: (evento: RespostaSubmetidaEventDTO) => Promise<void>;
+
   constructor(
     private readonly avaliacaoRepo: IAvaliacaoRepository,
     private readonly respostaRepo: IRespostaQuestionarioRepository,
-    private readonly servicoCadastrosUrl: string = process.env.SERVICO_CADASTROS_URL || 'http://localhost:3002'
-  ) {}
+    private readonly servicoCadastrosUrl: string = process.env.SERVICO_CADASTROS_URL || 'http://localhost:3002',
+    publicarEventoFn?: (evento: RespostaSubmetidaEventDTO) => Promise<void>
+  ) {
+    this.publicarEventoFn = publicarEventoFn;
+  }
+
+  setPublicarEvento(fn: (evento: RespostaSubmetidaEventDTO) => Promise<void>): void {
+    this.publicarEventoFn = fn;
+  }
 
   /**
    * Comunicação Síncrona (Ex2):
@@ -20,14 +30,15 @@ export class AvaliacaoService {
    */
   async criarAvaliacao(dto: CriarAvaliacaoRequestDTO): Promise<AvaliacaoResponseDTO> {
     const urlValidacao = `${this.servicoCadastrosUrl}/empresas/${dto.empresaId}`;
-    console.log(`[SERVIÇO-A] 🔄 Disparando chamada HTTP Síncrona (Ex2) -> ${urlValidacao}`);
+    console.log(`[SERVIÇO-A] [SYNC] Disparando chamada HTTP Síncrona (Ex2) -> ${urlValidacao}`);
 
     let empresaDados: { id: string; razaoSocial: string; ativa: boolean };
 
     try {
       const response = await fetch(urlValidacao, {
         method: 'GET',
-        headers: { 'Content-Type': 'application/json' }
+        headers: { 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(5000)
       });
 
       if (response.status === 404) {
@@ -39,8 +50,11 @@ export class AvaliacaoService {
       }
 
       empresaDados = await response.json() as { id: string; razaoSocial: string; ativa: boolean };
-      console.log(`[SERVIÇO-A] ✅ Resposta recebida do Microsserviço B: Empresa '${empresaDados.razaoSocial}' confirmada.`);
+      console.log(`[SERVIÇO-A] [OK] Resposta recebida do Microsserviço B: Empresa '${empresaDados.razaoSocial}' confirmada.`);
     } catch (err: any) {
+      if (err.name === 'TimeoutError') {
+        throw new Error(`Tempo limite excedido ao comunicar com o Microsserviço B (Cadastros).`);
+      }
       if (err.cause?.code === 'ECONNREFUSED') {
         throw new Error(`Microsserviço B (Cadastros em ${this.servicoCadastrosUrl}) está offline ou inacessível.`);
       }
@@ -107,20 +121,41 @@ export class AvaliacaoService {
     };
 
     const salva = await this.respostaRepo.criar(novaResposta);
+    const respostaDTO = this.paraRespostaDTO(salva);
 
-    // Recalcular métricas globais da avaliação
-    const todasRespostas = await this.respostaRepo.listarPorAvaliacao(avaliacaoId);
-    const mediaGeral = Number((todasRespostas.reduce((acc, r) => acc + r.scoreIndividual, 0) / todasRespostas.length).toFixed(2));
-    const riscoGeral = this.determinarNivelRisco(mediaGeral);
+    // Emissão do evento assíncrono para o Message Broker (desacoplamento total)
+    if (this.publicarEventoFn) {
+      const evento: RespostaSubmetidaEventDTO = {
+        id: salva.id,
+        avaliacaoId: salva.avaliacaoId,
+        colaboradorId: salva.colaboradorId,
+        scoreIndividual: salva.scoreIndividual,
+        nivelRisco: salva.nivelRisco,
+        submetidoEm: salva.submetidoEm.toISOString()
+      };
+
+      // Dispara assincronamente sem reter o ciclo HTTP da requisição
+      this.publicarEventoFn(evento).catch(err => {
+        console.error(`[AVALIAÇÕES] [ERRO] Erro ao despachar evento assíncrono:`, err.message);
+      });
+    }
+
+    return respostaDTO;
+  }
+
+  /**
+   * Processamento assíncrono acionado exclusivamente pelo Consumidor do Broker
+   */
+  async processarRecalculoRiscoAssincrono(avaliacaoId: string): Promise<void> {
+    const { total, scoreMedio } = await this.respostaRepo.obterEstatisticas(avaliacaoId);
+    const riscoGeral = this.determinarNivelRisco(scoreMedio);
 
     await this.avaliacaoRepo.atualizar(avaliacaoId, {
       status: 'EM_ANDAMENTO',
-      totalRespostas: todasRespostas.length,
-      scoreMedio: mediaGeral,
+      totalRespostas: total,
+      scoreMedio,
       nivelRiscoGeral: riscoGeral
     });
-
-    return this.paraRespostaDTO(salva);
   }
 
   async obterRelatorio(avaliacaoId: string): Promise<RelatorioAvaliacaoDTO> {
@@ -131,12 +166,16 @@ export class AvaliacaoService {
 
     const respostas = await this.respostaRepo.listarPorAvaliacao(avaliacaoId);
 
-    const distribuicao = {
-      baixo: respostas.filter(r => r.nivelRisco === 'BAIXO').length,
-      medio: respostas.filter(r => r.nivelRisco === 'MEDIO').length,
-      alto: respostas.filter(r => r.nivelRisco === 'ALTO').length,
-      critico: respostas.filter(r => r.nivelRisco === 'CRITICO').length
-    };
+    // Distribuição de risco consolidada em passagem única O(N)
+    const distribuicao = { baixo: 0, medio: 0, alto: 0, critico: 0 };
+    for (const r of respostas) {
+      switch (r.nivelRisco) {
+        case 'BAIXO': distribuicao.baixo++; break;
+        case 'MEDIO': distribuicao.medio++; break;
+        case 'ALTO': distribuicao.alto++; break;
+        case 'CRITICO': distribuicao.critico++; break;
+      }
+    }
 
     return {
       avaliacao: this.paraAvaliacaoDTO(avaliacao),

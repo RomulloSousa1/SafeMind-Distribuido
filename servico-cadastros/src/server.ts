@@ -7,6 +7,7 @@ import { EmpresaService } from './services/EmpresaService.js';
 import { ColaboradorService } from './services/ColaboradorService.js';
 import { EmpresaController } from './controllers/EmpresaController.js';
 import { ColaboradorController } from './controllers/ColaboradorController.js';
+import { AuditoriaRiscoConsumer } from './messaging/AuditoriaRiscoConsumer.js';
 import { initCadastrosDatabase } from './database.js';
 
 dotenv.config();
@@ -40,6 +41,10 @@ const colaboradorService = new ColaboradorService(colaboradorRepo, empresaRepo);
 const empresaController = new EmpresaController(empresaService);
 const colaboradorController = new ColaboradorController(colaboradorService);
 
+// Inicialização do Consumidor Pub/Sub no RabbitMQ
+const auditoriaConsumer = new AuditoriaRiscoConsumer();
+auditoriaConsumer.iniciar().catch(() => {});
+
 // Rotas do Microsserviço B
 app.get('/health', (_req, res) => {
   res.json({ servico: 'Microsserviço B (Cadastros)', porta: PORT, status: 'ONLINE', timestamp: new Date() });
@@ -57,7 +62,7 @@ app.post('/colaboradores', colaboradorController.criar);
 
 app.listen(PORT, () => {
   console.log(`=======================================================`);
-  console.log(`🚀 [Microsserviço B: Cadastros] rodando na porta ${PORT}`);
+  console.log(` [Microsserviço B: Cadastros] rodando na porta ${PORT}`);
   console.log(`   Endereço: http://localhost:${PORT}`);
   console.log(`   Healthcheck: http://localhost:${PORT}/health`);
   console.log(`=======================================================`);

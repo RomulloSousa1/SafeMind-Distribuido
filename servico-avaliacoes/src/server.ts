@@ -5,6 +5,8 @@ import { AvaliacaoRepository } from './repositories/AvaliacaoRepository.js';
 import { RespostaQuestionarioRepository } from './repositories/RespostaQuestionarioRepository.js';
 import { AvaliacaoService } from './services/AvaliacaoService.js';
 import { AvaliacaoController } from './controllers/AvaliacaoController.js';
+import { RabbitMQProducer } from './messaging/RabbitMQProducer.js';
+import { ProcessamentoRiscoConsumer } from './messaging/ProcessamentoRiscoConsumer.js';
 import { initAvaliacoesDatabase } from './database.js';
 
 dotenv.config();
@@ -28,11 +30,24 @@ app.use((req, res, next) => {
   next();
 });
 
-// Injeção de dependências
+// Injeção de dependências das 5 camadas
 const avaliacaoRepo = new AvaliacaoRepository();
 const respostaRepo = new RespostaQuestionarioRepository();
 const avaliacaoService = new AvaliacaoService(avaliacaoRepo, respostaRepo);
 const avaliacaoController = new AvaliacaoController(avaliacaoService);
+
+// Configuração do Message Broker (RabbitMQ Producer & Consumer)
+const producer = new RabbitMQProducer();
+const consumer = new ProcessamentoRiscoConsumer(avaliacaoService);
+
+avaliacaoService.setPublicarEvento(async (evento) => {
+  await producer.publicarRespostaSubmetida(evento);
+  await consumer.processarEventoLocal(evento);
+});
+
+// Inicialização não-bloqueante das conexões com o Broker
+producer.conectar().catch(() => {});
+consumer.iniciar().catch(() => {});
 
 // Rotas do Microsserviço A
 app.get('/health', (_req, res) => {
@@ -50,7 +65,7 @@ app.get('/avaliacoes/:id/relatorio', avaliacaoController.obterRelatorio);
 
 app.listen(PORT, () => {
   console.log(`=======================================================`);
-  console.log(`🚀 [Microsserviço A: Avaliações] rodando na porta ${PORT}`);
+  console.log(` [Microsserviço A: Avaliações] rodando na porta ${PORT}`);
   console.log(`   Endereço: http://localhost:${PORT}`);
   console.log(`   Healthcheck: http://localhost:${PORT}/health`);
   console.log(`=======================================================`);

@@ -62,7 +62,12 @@ export class AvaliacaoController {
       }
 
       const resposta = await this.avaliacaoService.submeterResposta(id, validacao.data);
-      res.status(201).json(resposta);
+      res.status(202).json({
+        status: 'PROCESSANDO',
+        mensagem: 'Resposta de questionário recebida com sucesso. Processamento assíncrono iniciado via Message Broker.',
+        protocolo: resposta.id,
+        resposta
+      });
     } catch (err: any) {
       const status = err.message.includes('não encontrada') ? 404 : 400;
       res.status(status).json({ erro: err.message || 'Erro ao submeter resposta' });

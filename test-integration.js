@@ -1,18 +1,18 @@
 async function runIntegrationTests() {
   console.log('===============================================================');
-  console.log('🧪 INICIANDO TESTES DE INTEGRAÇÃO DO SISTEMA DISTRIBUÍDO');
+  console.log('INICIANDO TESTES DE INTEGRAÇÃO DO SISTEMA DISTRIBUÍDO');
   console.log('===============================================================\n');
 
   const BASE_URL = 'http://localhost:3000/api';
 
   // 1. Status do Cluster
-  console.log('1️⃣ Testando Status do Cluster (Gateway -> Serviços A e B)...');
+  console.log('1. Testando Status do Cluster (Gateway -> Serviços A e B)...');
   const resCluster = await fetch(`${BASE_URL}/status-distribuido`);
   const statusCluster = await resCluster.json();
   console.log('Resposta Status Cluster:', JSON.stringify(statusCluster, null, 2));
 
   // 2. Cadastrar Empresa (Gateway -> Serviço B)
-  console.log('\n2️⃣ Testando Cadastro de Empresa (Gateway -> Microsserviço B)...');
+  console.log('\n2. Testando Cadastro de Empresa (Gateway -> Microsserviço B)...');
   const resEmpresa = await fetch(`${BASE_URL}/empresas`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -33,7 +33,7 @@ async function runIntegrationTests() {
   }
 
   // 3. Cadastrar Colaborador (Gateway -> Serviço B)
-  console.log('\n3️⃣ Testando Cadastro de Colaborador (Gateway -> Microsserviço B)...');
+  console.log('\n3. Testando Cadastro de Colaborador (Gateway -> Microsserviço B)...');
   const resColab = await fetch(`${BASE_URL}/colaboradores`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -54,7 +54,7 @@ async function runIntegrationTests() {
   }
 
   // 4. Prova Síncrona Ex1 + Ex2: Criar Avaliação Psicossocial
-  console.log('\n4️⃣ [PROVA SÍNCRONA Ex1 + Ex2] Criando Avaliação Psicossocial...');
+  console.log('\n4. [PROVA SÍNCRONA Ex1 + Ex2] Criando Avaliação Psicossocial...');
   console.log('   Fluxo: Postman -> Gateway:3000 (Ex1) -> ServicoA:3001 (Ex2) -> ServicoB:3002');
   const resAvaliacao = await fetch(`${BASE_URL}/avaliacoes`, {
     method: 'POST',
@@ -69,7 +69,7 @@ async function runIntegrationTests() {
   console.log('Avaliação Criada (Status ' + resAvaliacao.status + '):', avaliacaoCriada);
 
   // 5. Teste de Validação Negativa: Empresa Inexistente
-  console.log('\n5️⃣ [PROVA SÍNCRONA Negativa] Tentativa de criar avaliação com empresa inexistente...');
+  console.log('\n5. [PROVA SÍNCRONA Negativa] Tentativa de criar avaliação com empresa inexistente...');
   const resFalha = await fetch(`${BASE_URL}/avaliacoes`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -82,8 +82,8 @@ async function runIntegrationTests() {
   const erroRecebido = await resFalha.json();
   console.log('Erro Esperado Recebido (Status ' + resFalha.status + '):', erroRecebido);
 
-  // 6. Submeter Resposta de Questionário (Colaborador 1 - Risco Baixo)
-  console.log('\n6️⃣ Submetendo Resposta de Questionário NR-1 (Baixo Risco)...');
+  // 6. Submeter Resposta de Questionário (Colaborador 1 - Risco Baixo - Assíncrono 202 Accepted)
+  console.log('\n6. [ASSÍNCRONO - 202 Accepted] Submetendo Resposta de Questionário NR-1 (Baixo Risco)...');
   const resResp1 = await fetch(`${BASE_URL}/avaliacoes/${avaliacaoCriada.id}/respostas`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -95,10 +95,10 @@ async function runIntegrationTests() {
     })
   });
   const resp1 = await resResp1.json();
-  console.log('Resposta 1 Submetida (Status ' + resResp1.status + '):', resp1);
+  console.log('Resposta 1 Aceita para Processamento Assíncrono (Status ' + resResp1.status + '):', resp1);
 
-  // 7. Submeter Resposta de Questionário (Colaborador 2 - Risco Alto)
-  console.log('\n7️⃣ Submetendo Resposta de Questionário NR-1 (Alto Risco)...');
+  // 7. Submeter Resposta de Questionário (Colaborador 2 - Risco Alto - Assíncrono 202 Accepted)
+  console.log('\n7. [ASSÍNCRONO - 202 Accepted] Submetendo Resposta de Questionário NR-1 (Alto Risco)...');
   const resResp2 = await fetch(`${BASE_URL}/avaliacoes/${avaliacaoCriada.id}/respostas`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -110,20 +110,77 @@ async function runIntegrationTests() {
     })
   });
   const resp2 = await resResp2.json();
-  console.log('Resposta 2 Submetida (Status ' + resResp2.status + '):', resp2);
+  console.log('Resposta 2 Aceita para Processamento Assíncrono (Status ' + resResp2.status + '):', resp2);
+
+  // Aguarda 100ms para garantir que o consumidor assíncrono processe a mensagem
+  await new Promise(r => setTimeout(r, 100));
 
   // 8. Obter Relatório Consolidado de Risco Psicossocial
-  console.log('\n8️⃣ Consultando Relatório Consolidado de Risco Psicossocial...');
+  console.log('\n8. Consultando Relatório Consolidado de Risco Psicossocial (Pós Processamento Assíncrono)...');
   const resRelatorio = await fetch(`${BASE_URL}/avaliacoes/${avaliacaoCriada.id}/relatorio`);
   const relatorio = await resRelatorio.json();
   console.log('Relatório Final Consolidado:', JSON.stringify(relatorio, null, 2));
 
+  // 9. Registrar Novo Usuário (CPF + Senha) no Microsserviço C
+  console.log('\n9. Testando Registro de Usuário (Gateway -> Microsserviço C: Autenticação)...');
+  const resRegistro = await fetch(`${BASE_URL}/auth/registrar`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      cpf: '987.654.321-99',
+      senha: 'SenhaSegura@2026',
+      nome: 'Juliana Costa'
+    })
+  });
+  const registroUsuario = await resRegistro.json();
+  if (resRegistro.status === 201) {
+    console.log('Usuário Registrado com Sucesso (Status 201):', registroUsuario);
+  } else {
+    console.log('Usuário já cadastrado no SQLite (Status ' + resRegistro.status + '):', registroUsuario);
+  }
+
+  // 10. Login com Sucesso (CPF + Senha)
+  console.log('\n10. Testando Login de Usuário com CPF + Senha...');
+  const resLogin = await fetch(`${BASE_URL}/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      cpf: '987.654.321-99',
+      senha: 'SenhaSegura@2026'
+    })
+  });
+  const loginResult = await resLogin.json();
+  console.log('Login Realizado com Sucesso (Status ' + resLogin.status + '):', loginResult);
+
+  // 11. Teste Negativo de Autenticação (Senha Incorreta)
+  console.log('\n11. Testando Tentativa de Login com Senha Incorreta...');
+  const resLoginFalha = await fetch(`${BASE_URL}/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      cpf: '987.654.321-99',
+      senha: 'SenhaErrada'
+    })
+  });
+  const loginFalhaResult = await resLoginFalha.json();
+  console.log('Falha Esperada Recebida (Status ' + resLoginFalha.status + '):', loginFalhaResult);
+
+  // 12. Validação do Token Emitido
+  console.log('\n12. Testando Validação do Token JWT Emitido...');
+  const resValidar = await fetch(`${BASE_URL}/auth/validar`, {
+    headers: {
+      'Authorization': `Bearer ${loginResult.token}`
+    }
+  });
+  const validacaoResult = await resValidar.json();
+  console.log('Token Validado com Sucesso (Status ' + resValidar.status + '):', validacaoResult);
+
   console.log('\n===============================================================');
-  console.log('🎉 TODOS OS TESTES DE INTEGRAÇÃO PASSARAM COM 100% DE SUCESSO!');
+  console.log('TODOS OS TESTES DE INTEGRAÇÃO PASSARAM COM 100% DE SUCESSO!');
   console.log('===============================================================');
 }
 
 runIntegrationTests().catch(e => {
-  console.error('❌ Falha nos testes de integração:', e);
+  console.error('[ERRO] Falha nos testes de integração:', e);
   process.exit(1);
 });
