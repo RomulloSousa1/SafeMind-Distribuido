@@ -36,6 +36,7 @@ Base: `http://localhost`. Usuário de teste: CPF `111.222.333-44`, senha `Senha@
    ```bash
    docker compose logs -f servico-avaliacoes
    ```
+   > Atenção: o `docker compose logs` usa o nome do **serviço** (`servico-avaliacoes`). Já o `docker stop`, `docker start` e `docker logs` usam o nome do **contêiner**, aquele da coluna NAMES do `docker ps` (por exemplo `safemind-distribuido-servico-avaliacoes-1`). Se misturar os dois, dá erro de "no such service" ou "no such container".
 5. **Tolerância a falhas:** descubra o nome dos contêineres com `docker ps`, derrube um e repita as requisições. Continuam retornando 200:
    ```bash
    docker stop <nome-de-um-contêiner-servico-avaliacoes>
@@ -45,8 +46,24 @@ Base: `http://localhost`. Usuário de teste: CPF `111.222.333-44`, senha `Senha@
 
 A coleção do Postman está em `postman/`.
 
+## Cadastrar usuários
+
+Quer criar um usuário novo? É só mandar um `POST http://localhost/api/auth/registrar` (não precisa de token):
+
+```json
+{"cpf":"123.456.789-00","nome":"Maria Silva","senha":"minhasenha123"}
+```
+
+Se der certo, volta `201` com o id, o nome e o perfil do usuário. Depois é só fazer login em `/api/auth/login` com esse mesmo CPF e senha.
+
+O que dá pra esperar:
+
+- CPF com pelo menos 11 caracteres, nome com pelo menos 2 e senha com pelo menos 6. Se não cumprir, volta `400`.
+- CPF que já existe volta `409`.
+- Todo mundo que se cadastra vira usuário comum (`USER`). Se você mandar `"role":"ADMIN"`, o sistema ignora. O único admin é o do seed: CPF `999.888.777-66`, senha `Admin@2026`.
+- Só o admin consegue listar os usuários (`GET /api/auth/usuarios`). Com usuário comum volta `403`.
+
 ## Observações
 
-- O registro público (`/api/auth/registrar`) sempre cria usuário comum. O administrador existe só no seed: CPF `999.888.777-66`, senha `Admin@2026`.
 - Variáveis opcionais (segredo do JWT, senha do banco): copie `.env.example` para `.env`.
 - Se uma réplica for recriada (novo IP), rode `docker compose restart nginx`.
