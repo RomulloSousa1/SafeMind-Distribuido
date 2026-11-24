@@ -1,18 +1,132 @@
-version: '3.8'
-
 services:
-  rabbitmq:
-    image: rabbitmq:3-management
-    container_name: safemind-rabbitmq
-    restart: always
+  nginx:
+    image: nginx:alpine
+    container_name: safemind-nginx
     ports:
-      - "5672:5672"    # Porta AMQP padrão
-      - "15672:15672"  # Painel de Gerenciamento Web (http://localhost:15672 - user: guest, pass: guest)
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      servico-autenticacao:
+        condition: service_healthy
+      servico-cadastros:
+        condition: service_healthy
+      servico-avaliacoes:
+        condition: service_healthy
+    networks:
+      - safemind-net
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: safemind
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-safemind_pg_2026}
+    volumes:
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - safemind-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U safemind"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: safemind-rabbitmq
     environment:
       RABBITMQ_DEFAULT_USER: guest
       RABBITMQ_DEFAULT_PASS: guest
-    volumes:
-      - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - safemind-net
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  servico-autenticacao:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE_DIR: servico-autenticacao
+    container_name: safemind-auth
+    environment:
+      - PORT=3003
+      - JWT_SECRET=${JWT_SECRET:-safemind_super_secret_key_2026}
+      - JWT_EXPIRES_IN=${JWT_EXPIRES_IN:-3600}
+      - DATABASE_URL=postgres://safemind:${POSTGRES_PASSWORD:-safemind_pg_2026}@postgres:5432/autenticacao
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3003/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks:
+      - safemind-net
+    restart: unless-stopped
+
+  servico-cadastros:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE_DIR: servico-cadastros
+    container_name: safemind-cadastros
+    environment:
+      - PORT=3002
+      - JWT_SECRET=${JWT_SECRET:-safemind_super_secret_key_2026}
+      - DATABASE_URL=postgres://safemind:${POSTGRES_PASSWORD:-safemind_pg_2026}@postgres:5432/cadastros
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3002/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks:
+      - safemind-net
+    restart: unless-stopped
+
+  servico-avaliacoes:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE_DIR: servico-avaliacoes
+    environment:
+      - PORT=3001
+      - JWT_SECRET=${JWT_SECRET:-safemind_super_secret_key_2026}
+      - CADASTROS_URL=http://servico-cadastros:3002
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672
+      - DATABASE_URL=postgres://safemind:${POSTGRES_PASSWORD:-safemind_pg_2026}@postgres:5432/avaliacoes
+    deploy:
+      replicas: 3
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      servico-cadastros:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3001/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks:
+      - safemind-net
+    restart: unless-stopped
 
 volumes:
-  rabbitmq_data:
+  pgdata:
+
+networks:
+  safemind-net:
+    driver: bridge

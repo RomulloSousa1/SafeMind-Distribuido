@@ -1,62 +1,30 @@
-import Database from 'better-sqlite3';
-import path from 'node:path';
-import fs from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { hashPassword } from './utils/cryptoUtils.js';
+import pg from 'pg';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+export const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
 
-const dbPath = process.env.AUTENTICACAO_DB_PATH
-  ? path.resolve(process.cwd(), process.env.AUTENTICACAO_DB_PATH)
-  : path.resolve(__dirname, '../data/autenticacao.db');
+type Seed = (client: pg.PoolClient) => Promise<void>;
 
-fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-export const db = new Database(dbPath);
-
-// Ativa WAL mode para concorrência e integridade
-db.pragma('journal_mode = WAL');
-db.pragma('foreign_keys = ON');
-
-export function initAutenticacaoDatabase(): void {
-  // Criação da tabela de Usuários
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS usuarios (
-      id TEXT PRIMARY KEY,
-      cpf TEXT NOT NULL UNIQUE,
-      cpfFormatado TEXT,
-      nome TEXT,
-      senhaHash TEXT NOT NULL,
-      ativo INTEGER NOT NULL DEFAULT 1,
-      criadoEm TEXT NOT NULL,
-      atualizadoEm TEXT NOT NULL
-    );
-  `);
-
-  // Índice para busca rápida de CPF
-  db.exec(`
-    CREATE INDEX IF NOT EXISTS idx_usuarios_cpf ON usuarios(cpf);
-  `);
-
-  // Seed de usuário inicial para testes
-  const existeUsuario = db.prepare('SELECT id FROM usuarios WHERE cpf = ?').get('12345678900');
-  if (!existeUsuario) {
-    const agora = new Date().toISOString();
-    const hash = hashPassword('SafeMind@2026');
-
-    db.prepare(`
-      INSERT INTO usuarios (id, cpf, cpfFormatado, nome, senhaHash, ativo, criadoEm, atualizadoEm)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      'usr-admin-1',
-      '12345678900',
-      '123.456.789-00',
-      'Administrador SafeMind',
-      hash,
-      1,
-      agora,
-      agora
-    );
+/** Cria o schema (idempotente) com retry; lock consultivo evita corrida entre réplicas. */
+export async function initDatabase(schema: string, seed?: Seed): Promise<void> {
+  for (let tentativa = 1; ; tentativa++) {
+    try {
+      const client = await pool.connect();
+      try {
+        await client.query('SELECT pg_advisory_lock(727)');
+        await client.query(schema);
+        if (seed) await seed(client);
+      } finally {
+        await client.query('SELECT pg_advisory_unlock(727)').catch(() => undefined);
+        client.release();
+      }
+      console.log('[DB] Schema pronto.');
+      return;
+    } catch (err) {
+      if (tentativa >= 30) throw err;
+      console.log(`[DB] Aguardando PostgreSQL (tentativa ${tentativa})...`);
+      await sleep(2000);
+    }
   }
 }

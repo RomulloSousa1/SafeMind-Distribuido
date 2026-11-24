@@ -1,186 +1,103 @@
-async function runIntegrationTests() {
-  console.log('===============================================================');
-  console.log('INICIANDO TESTES DE INTEGRAÇÃO DO SISTEMA DISTRIBUÍDO');
-  console.log('===============================================================\n');
+// Teste de integração ponta a ponta (requer `docker compose up -d --build`).
+// Uso: node test-integration.js [baseUrl]   (padrão: http://localhost)
+const BASE = process.argv[2] || 'http://localhost';
+let falhas = 0;
 
-  const BASE_URL = 'http://localhost:3000/api';
-
-  // 1. Status do Cluster
-  console.log('1. Testando Status do Cluster (Gateway -> Serviços A e B)...');
-  const resCluster = await fetch(`${BASE_URL}/status-distribuido`);
-  const statusCluster = await resCluster.json();
-  console.log('Resposta Status Cluster:', JSON.stringify(statusCluster, null, 2));
-
-  // 2. Cadastrar Empresa (Gateway -> Serviço B)
-  console.log('\n2. Testando Cadastro de Empresa (Gateway -> Microsserviço B)...');
-  const resEmpresa = await fetch(`${BASE_URL}/empresas`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      id: 'emp-teste-1',
-      razaoSocial: 'Indústria Metalúrgica Horizonte S.A.',
-      nomeFantasia: 'Horizonte Metais',
-      cnpj: '55.666.777/0001-88',
-      setorPrincipal: 'Metalurgia Pesada',
-      ativa: true
-    })
-  });
-  const empresaCriada = await resEmpresa.json();
-  if (resEmpresa.status === 201) {
-    console.log('Empresa Criada no SQLite (Status 201):', empresaCriada);
-  } else {
-    console.log('Empresa já persistida no SQLite (Status ' + resEmpresa.status + '):', empresaCriada);
-  }
-
-  // 3. Cadastrar Colaborador (Gateway -> Serviço B)
-  console.log('\n3. Testando Cadastro de Colaborador (Gateway -> Microsserviço B)...');
-  const resColab = await fetch(`${BASE_URL}/colaboradores`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      empresaId: 'emp-teste-1',
-      nome: 'Juliana Costa',
-      email: 'juliana.costa@horizonte.com.br',
-      setor: 'Produção',
-      cargo: 'Supervisora de Turno',
-      ativo: true
-    })
-  });
-  const colabCriado = await resColab.json();
-  if (resColab.status === 201) {
-    console.log('Colaborador Criado no SQLite (Status 201):', colabCriado);
-  } else {
-    console.log('Colaborador já persistido no SQLite (Status ' + resColab.status + '):', colabCriado);
-  }
-
-  // 4. Prova Síncrona Ex1 + Ex2: Criar Avaliação Psicossocial
-  console.log('\n4. [PROVA SÍNCRONA Ex1 + Ex2] Criando Avaliação Psicossocial...');
-  console.log('   Fluxo: Postman -> Gateway:3000 (Ex1) -> ServicoA:3001 (Ex2) -> ServicoB:3002');
-  const resAvaliacao = await fetch(`${BASE_URL}/avaliacoes`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      empresaId: 'emp-teste-1',
-      titulo: 'Avaliação Ergonômica e Psicossocial NR-1 2026',
-      setor: 'Produção'
-    })
-  });
-  const avaliacaoCriada = await resAvaliacao.json();
-  console.log('Avaliação Criada (Status ' + resAvaliacao.status + '):', avaliacaoCriada);
-
-  // 5. Teste de Validação Negativa: Empresa Inexistente
-  console.log('\n5. [PROVA SÍNCRONA Negativa] Tentativa de criar avaliação com empresa inexistente...');
-  const resFalha = await fetch(`${BASE_URL}/avaliacoes`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      empresaId: 'empresa-que-nao-existe',
-      titulo: 'Tentativa que deve ser rejeitada',
-      setor: 'TI'
-    })
-  });
-  const erroRecebido = await resFalha.json();
-  console.log('Erro Esperado Recebido (Status ' + resFalha.status + '):', erroRecebido);
-
-  // 6. Submeter Resposta de Questionário (Colaborador 1 - Risco Baixo - Assíncrono 202 Accepted)
-  console.log('\n6. [ASSÍNCRONO - 202 Accepted] Submetendo Resposta de Questionário NR-1 (Baixo Risco)...');
-  const resResp1 = await fetch(`${BASE_URL}/avaliacoes/${avaliacaoCriada.id}/respostas`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      sobrecargaTrabalho: 1,
-      suporteLideranca: 1,
-      clarezaPapel: 2,
-      ambienteFisico: 1
-    })
-  });
-  const resp1 = await resResp1.json();
-  console.log('Resposta 1 Aceita para Processamento Assíncrono (Status ' + resResp1.status + '):', resp1);
-
-  // 7. Submeter Resposta de Questionário (Colaborador 2 - Risco Alto - Assíncrono 202 Accepted)
-  console.log('\n7. [ASSÍNCRONO - 202 Accepted] Submetendo Resposta de Questionário NR-1 (Alto Risco)...');
-  const resResp2 = await fetch(`${BASE_URL}/avaliacoes/${avaliacaoCriada.id}/respostas`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      sobrecargaTrabalho: 5,
-      suporteLideranca: 4,
-      clarezaPapel: 4,
-      ambienteFisico: 5
-    })
-  });
-  const resp2 = await resResp2.json();
-  console.log('Resposta 2 Aceita para Processamento Assíncrono (Status ' + resResp2.status + '):', resp2);
-
-  // Aguarda 100ms para garantir que o consumidor assíncrono processe a mensagem
-  await new Promise(r => setTimeout(r, 100));
-
-  // 8. Obter Relatório Consolidado de Risco Psicossocial
-  console.log('\n8. Consultando Relatório Consolidado de Risco Psicossocial (Pós Processamento Assíncrono)...');
-  const resRelatorio = await fetch(`${BASE_URL}/avaliacoes/${avaliacaoCriada.id}/relatorio`);
-  const relatorio = await resRelatorio.json();
-  console.log('Relatório Final Consolidado:', JSON.stringify(relatorio, null, 2));
-
-  // 9. Registrar Novo Usuário (CPF + Senha) no Microsserviço C
-  console.log('\n9. Testando Registro de Usuário (Gateway -> Microsserviço C: Autenticação)...');
-  const resRegistro = await fetch(`${BASE_URL}/auth/registrar`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      cpf: '987.654.321-99',
-      senha: 'SenhaSegura@2026',
-      nome: 'Juliana Costa'
-    })
-  });
-  const registroUsuario = await resRegistro.json();
-  if (resRegistro.status === 201) {
-    console.log('Usuário Registrado com Sucesso (Status 201):', registroUsuario);
-  } else {
-    console.log('Usuário já cadastrado no SQLite (Status ' + resRegistro.status + '):', registroUsuario);
-  }
-
-  // 10. Login com Sucesso (CPF + Senha)
-  console.log('\n10. Testando Login de Usuário com CPF + Senha...');
-  const resLogin = await fetch(`${BASE_URL}/auth/login`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      cpf: '987.654.321-99',
-      senha: 'SenhaSegura@2026'
-    })
-  });
-  const loginResult = await resLogin.json();
-  console.log('Login Realizado com Sucesso (Status ' + resLogin.status + '):', loginResult);
-
-  // 11. Teste Negativo de Autenticação (Senha Incorreta)
-  console.log('\n11. Testando Tentativa de Login com Senha Incorreta...');
-  const resLoginFalha = await fetch(`${BASE_URL}/auth/login`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      cpf: '987.654.321-99',
-      senha: 'SenhaErrada'
-    })
-  });
-  const loginFalhaResult = await resLoginFalha.json();
-  console.log('Falha Esperada Recebida (Status ' + resLoginFalha.status + '):', loginFalhaResult);
-
-  // 12. Validação do Token Emitido
-  console.log('\n12. Testando Validação do Token JWT Emitido...');
-  const resValidar = await fetch(`${BASE_URL}/auth/validar`, {
-    headers: {
-      'Authorization': `Bearer ${loginResult.token}`
-    }
-  });
-  const validacaoResult = await resValidar.json();
-  console.log('Token Validado com Sucesso (Status ' + resValidar.status + '):', validacaoResult);
-
-  console.log('\n===============================================================');
-  console.log('TODOS OS TESTES DE INTEGRAÇÃO PASSARAM COM 100% DE SUCESSO!');
-  console.log('===============================================================');
+function check(nome, ok, extra = '') {
+  console.log(`${ok ? '[OK]   ' : '[FALHA]'} ${nome}${extra ? ' - ' + extra : ''}`);
+  if (!ok) falhas++;
 }
 
-runIntegrationTests().catch(e => {
-  console.error('[ERRO] Falha nos testes de integração:', e);
-  process.exit(1);
+async function http(method, path, { token, body } = {}) {
+  const res = await fetch(BASE + path, {
+    method,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    },
+    body: body ? JSON.stringify(body) : undefined
+  });
+  const json = await res.json().catch(() => ({}));
+  return { status: res.status, json, headers: res.headers };
+}
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+async function login(cpf, senha) {
+  const r = await http('POST', '/api/auth/login', { body: { cpf, senha } });
+  return r.json.access_token;
+}
+
+function adulterar(token, role) {
+  const [h, p, s] = token.split('.');
+  const payload = JSON.parse(Buffer.from(p, 'base64url').toString());
+  payload.role = role;
+  return `${h}.${Buffer.from(JSON.stringify(payload)).toString('base64url')}.${s}`;
+}
+
+// 1. Segurança
+let r = await http('GET', '/api/avaliacoes');
+check('Sem token retorna 401', r.status === 401, `status ${r.status}`);
+
+const token = await login('111.222.333-44', 'Senha@2026');
+check('Login retorna JWT', Boolean(token));
+
+r = await http('GET', '/api/avaliacoes', { token: adulterar(token, 'ADMIN') });
+check('Token adulterado (role=ADMIN) retorna 401', r.status === 401, `status ${r.status}`);
+
+r = await http('POST', '/api/auth/registrar', {
+  body: { cpf: `000.${String(Date.now() % 1000000).padStart(6, "0")}-00`, nome: 'Teste Escalada', senha: 'abc12345', role: 'ADMIN' }
 });
+check('Registro público ignora role=ADMIN', r.status === 201 && r.json.role === 'USER', `role ${r.json.role}`);
+
+r = await http('GET', '/api/auth/usuarios', { token });
+check('Rota ADMIN com token USER retorna 403', r.status === 403, `status ${r.status}`);
+const tokenAdmin = await login('999.888.777-66', 'Admin@2026');
+r = await http('GET', '/api/auth/usuarios', { token: tokenAdmin });
+check('Rota ADMIN com token ADMIN retorna 200', r.status === 200, `status ${r.status}`);
+
+// 2. Balanceamento (Round Robin entre as réplicas)
+const instancias = new Set();
+for (let i = 0; i < 10; i++) {
+  const res = await http('GET', '/api/avaliacoes', { token });
+  if (res.status === 200) instancias.add(res.json.instancia);
+}
+check('10 GETs atendidos por 3 instâncias distintas', instancias.size === 3, [...instancias].join(', '));
+
+// 3. Negócio: comunicação síncrona + mensageria
+r = await http('POST', '/api/avaliacoes', { token, body: { empresaId: 'emp-inexistente', titulo: 'NR-1 teste', setor: 'TI' } });
+check('Avaliação com empresa inexistente retorna 404', r.status === 404, `status ${r.status}`);
+
+r = await http('POST', '/api/avaliacoes', { token, body: { empresaId: 'emp-1', titulo: 'NR-1 Q4', setor: 'TI' } });
+check('Avaliação com empresa válida retorna 201', r.status === 201, `status ${r.status}`);
+const avalId = r.json.id;
+
+// Todas as réplicas enxergam a mesma avaliação (banco compartilhado)
+const vistas = new Set();
+for (let i = 0; i < 6; i++) {
+  const g = await http('GET', `/api/avaliacoes/${avalId}`, { token });
+  if (g.status === 200) vistas.add(g.json.instancia);
+}
+check('Avaliação visível em todas as réplicas', vistas.size === 3, `${vistas.size} instâncias`);
+
+r = await http('POST', `/api/avaliacoes/${avalId}/respostas`, {
+  token,
+  body: { sobrecargaTrabalho: 5, suporteLideranca: 4, clarezaPapel: 4, ambienteFisico: 5 }
+});
+check('Resposta retorna 202 Accepted', r.status === 202, `status ${r.status}`);
+
+let rel;
+for (let i = 0; i < 20; i++) {
+  rel = (await http('GET', `/api/avaliacoes/${avalId}/relatorio`, { token })).json;
+  if (rel.processadas >= 1) break;
+  await sleep(500);
+}
+check('Consumidor processou a resposta (relatório atualizado)', rel?.processadas === 1 && rel.nivelRiscoGeral === 'ALTO',
+  JSON.stringify(rel));
+
+// 4. Rotas /api/negocio/
+r = await http('GET', '/api/negocio/empresas', { token });
+check('Rota /api/negocio/empresas retorna 200', r.status === 200, `status ${r.status}`);
+
+console.log(falhas === 0 ? '\nTodos os testes passaram.' : `\n${falhas} teste(s) falharam.`);
+process.exit(falhas === 0 ? 0 : 1);

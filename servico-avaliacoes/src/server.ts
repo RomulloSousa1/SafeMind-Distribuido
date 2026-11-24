@@ -1,72 +1,51 @@
 import express from 'express';
 import cors from 'cors';
-import dotenv from 'dotenv';
-import { AvaliacaoRepository } from './repositories/AvaliacaoRepository.js';
-import { RespostaQuestionarioRepository } from './repositories/RespostaQuestionarioRepository.js';
-import { AvaliacaoService } from './services/AvaliacaoService.js';
-import { AvaliacaoController } from './controllers/AvaliacaoController.js';
-import { RabbitMQProducer } from './messaging/RabbitMQProducer.js';
-import { ProcessamentoRiscoConsumer } from './messaging/ProcessamentoRiscoConsumer.js';
-import { initAvaliacoesDatabase } from './database.js';
+import { initDatabase } from './database.js';
+import { authMiddleware } from './middlewares/authMiddleware.js';
+import { errorHandler } from './middlewares/errorHandler.js';
+import { avaliacaoRoutes } from './routes/avaliacaoRoutes.js';
+import { iniciarBroker } from './messaging/broker.js';
+import { iniciarConsumidor } from './messaging/consumer.js';
 
-dotenv.config();
+const SCHEMA = `
+  CREATE TABLE IF NOT EXISTS avaliacoes (
+    id TEXT PRIMARY KEY,
+    empresa_id TEXT NOT NULL,
+    titulo TEXT NOT NULL,
+    setor TEXT NOT NULL,
+    criado_em TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS respostas (
+    id TEXT PRIMARY KEY,
+    avaliacao_id TEXT NOT NULL REFERENCES avaliacoes(id),
+    sobrecarga_trabalho INTEGER NOT NULL,
+    suporte_lideranca INTEGER NOT NULL,
+    clareza_papel INTEGER NOT NULL,
+    ambiente_fisico INTEGER NOT NULL,
+    status TEXT NOT NULL DEFAULT 'PENDENTE',
+    pontuacao DOUBLE PRECISION,
+    nivel_risco TEXT,
+    criado_em TEXT NOT NULL,
+    processado_em TEXT
+  );`;
+
+await initDatabase(SCHEMA);
+void iniciarBroker(iniciarConsumidor);
 
 const app = express();
-const PORT = process.env.AVALIACOES_PORT || 3001;
-
 app.use(cors());
 app.use(express.json());
-
-// Inicializa banco de dados SQLite e migrações
-initAvaliacoesDatabase();
-
-// Middleware de log de requisições de rede
-app.use((req, res, next) => {
-  const inicio = Date.now();
-  res.on('finish', () => {
-    const duracao = Date.now() - inicio;
-    console.log(`[SERVIÇO-A: AVALIAÇÕES :${PORT}] ${req.method} ${req.url} -> ${res.statusCode} (${duracao}ms)`);
-  });
+app.use((_req, res, next) => {
+  res.setHeader('X-Served-By', process.env.HOSTNAME || 'local');
   next();
 });
-
-// Injeção de dependências das 5 camadas
-const avaliacaoRepo = new AvaliacaoRepository();
-const respostaRepo = new RespostaQuestionarioRepository();
-const avaliacaoService = new AvaliacaoService(avaliacaoRepo, respostaRepo);
-const avaliacaoController = new AvaliacaoController(avaliacaoService);
-
-// Configuração do Message Broker (RabbitMQ Producer & Consumer)
-const producer = new RabbitMQProducer();
-const consumer = new ProcessamentoRiscoConsumer(avaliacaoService);
-
-avaliacaoService.setPublicarEvento(async (evento) => {
-  await producer.publicarRespostaSubmetida(evento);
-  await consumer.processarEventoLocal(evento);
-});
-
-// Inicialização não-bloqueante das conexões com o Broker
-producer.conectar().catch(() => {});
-consumer.iniciar().catch(() => {});
-
-// Rotas do Microsserviço A
 app.get('/health', (_req, res) => {
-  res.json({ servico: 'Microsserviço A (Avaliações)', porta: PORT, status: 'ONLINE', timestamp: new Date() });
+  res.json({ status: 'UP' });
 });
+app.use('/api/avaliacoes', authMiddleware, avaliacaoRoutes);
+app.use(errorHandler);
 
-// Rotas de Avaliações
-app.get('/avaliacoes', avaliacaoController.listar);
-app.get('/avaliacoes/:id', avaliacaoController.buscarPorId);
-app.post('/avaliacoes', avaliacaoController.criar);
-
-// Rotas de Questionários / Respostas
-app.post('/avaliacoes/:id/respostas', avaliacaoController.submeterResposta);
-app.get('/avaliacoes/:id/relatorio', avaliacaoController.obterRelatorio);
-
+const PORT = Number(process.env.PORT || 3001);
 app.listen(PORT, () => {
-  console.log(`=======================================================`);
-  console.log(` [Microsserviço A: Avaliações] rodando na porta ${PORT}`);
-  console.log(`   Endereço: http://localhost:${PORT}`);
-  console.log(`   Healthcheck: http://localhost:${PORT}/health`);
-  console.log(`=======================================================`);
+  console.log(`[Resource Server - Avaliações | Instância: ${process.env.HOSTNAME || 'local'}] Porta ${PORT}`);
 });
